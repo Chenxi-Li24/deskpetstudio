@@ -72,7 +72,8 @@ const char* petName();
 void ownerSet(const char* name);
 const char* ownerName();
 #include "stats.h"
-#include <M5StickCPlus.h>
+#include "wifi_manager.h"
+#include "hw/power.h"
 
 inline bool xferCommand(JsonDocument& doc) {
   const char* cmd = doc["cmd"];
@@ -109,12 +110,22 @@ inline bool xferCommand(JsonDocument& doc) {
     return true;
   }
 
+  if (strcmp(cmd, "wifi_set") == 0) {
+    const char* ssid = doc["ssid"];
+    const char* pass = doc["pass"];
+    if (!ssid) { _xAck("wifi_set", false); return true; }
+    wifiMgrConnect(ssid, pass ? pass : "");
+    _xAck("wifi_set", true);
+    return true;
+  }
+
   if (strcmp(cmd, "status") == 0) {
     // Dump everything the info screens show. Manual printf rather than
     // ArduinoJson serialize — less heap churn, and the shape is fixed.
-    int vBat = (int)(M5.Axp.GetBatVoltage() * 1000);
-    int iBat = (int)M5.Axp.GetBatCurrent();
-    int vBus = (int)(M5.Axp.GetVBusVoltage() * 1000);
+    HwBattery bat = hwBattery();
+    int vBat = bat.mV;
+    int iBat = 0;   // no current sensor on this board
+    int vBus = bat.usbPresent ? 5000 : 0;
     int pct = (vBat - 3200) / 10;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
     char b[320];
