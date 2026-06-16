@@ -263,37 +263,133 @@ inline void speciesIdxSave(uint8_t idx) {
   _prefs.end();
 }
 
-// ── WiFi Credentials (NVS "buddy" namespace) ──────────────────────────
+	// ── WiFi Profiles (up to 5, index 0 = highest priority) ──────────────
+	// NVS keys: w_n (count), w_s0..w_s4 (SSID), w_p0..w_p4 (password)
+	// Migrates old single-key format (w_ssid/w_pass) on first load.
+	//
+	// ══════════════════════════════════════════════════════════════════════
+	// IMPORTANT — UTF-8 & special-character escaping
+	// ══════════════════════════════════════════════════════════════════════
+	// SSIDs may contain UTF-8 (emoji, CJK, etc). When sending JSON over
+	// BLE or HTTP, the sender MUST use json.dumps(..., ensure_ascii=False)
+	// in Python (or equivalent in other languages). With ensure_ascii=True
+	// (Python default), non-ASCII characters are escaped to literal
+	// backslash-u-XXXX sequences, which the ESP32 parser treats as raw
+	// text — causing WiFi.begin() to fail with NO_AP_FOUND (reason 201).
+	//
+	// The BLE JSON parser in main.cpp uses strchr(s, '"') to find string
+	// boundaries. This is UTF-8-safe because byte 0x22 (double-quote) never
+	// appears inside multi-byte UTF-8 sequences (continuation bytes are
+	// always 0x80-0xBF).
+	// ══════════════════════════════════════════════════════════════════════
 
-static char _wifiSsid[33] = "";
-static char _wifiPass[65] = "";
+	#define WIFI_MAX_PROFILES 5
 
-inline void wifiCredLoad() {
-  _prefs.begin("buddy", true);
-  _prefs.getString("w_ssid", _wifiSsid, sizeof(_wifiSsid));
-  _prefs.getString("w_pass", _wifiPass, sizeof(_wifiPass));
-  _prefs.end();
-}
+	static char     _wifiProfSsid[WIFI_MAX_PROFILES][33] = {{0}};
+	static char     _wifiProfPass[WIFI_MAX_PROFILES][65] = {{0}};
+	static uint8_t  _wifiProfCount = 0;
 
-inline void wifiCredSave(const char* ssid, const char* pass) {
-  if (ssid) { strncpy(_wifiSsid, ssid, sizeof(_wifiSsid)-1); _wifiSsid[sizeof(_wifiSsid)-1]=0; }
-  if (pass) { strncpy(_wifiPass, pass, sizeof(_wifiPass)-1); _wifiPass[sizeof(_wifiPass)-1]=0; }
-  _prefs.begin("buddy", false);
-  _prefs.putString("w_ssid", _wifiSsid);
-  _prefs.putString("w_pass", _wifiPass);
-  _prefs.end();
-}
+	inline void wifiCredLoad() {
+	  memset(_wifiProfSsid, 0, sizeof(_wifiProfSsid));
+	  memset(_wifiProfPass, 0, sizeof(_wifiProfPass));
+	  _prefs.begin("buddy", true);
+	  _wifiProfCount = _prefs.getUChar("w_n", 0);
+	  if (_wifiProfCount > WIFI_MAX_PROFILES) _wifiProfCount = WIFI_MAX_PROFILES;
 
-inline void wifiCredClear() {
-  _wifiSsid[0] = 0; _wifiPass[0] = 0;
-  _prefs.begin("buddy", false);
-  _prefs.putString("w_ssid", "");
-  _prefs.putString("w_pass", "");
-  _prefs.end();
-}
+	  // Migration: old single-key format -> multi-profile
+	  String oldSsid = _prefs.getString("w_ssid", "");
+	  if (oldSsid.length() > 0 && _wifiProfCount == 0) {
+	    String oldPass = _prefs.getString("w_pass", "");
+	    strncpy(_wifiProfSsid[0], oldSsid.c_str(), 32);
+	    strncpy(_wifiProfPass[0], oldPass.c_str(), 64);
+	    _wifiProfCount = 1;
+	    _prefs.end();
+	    // Save in new format + clear old keys
+	    _prefs.begin("buddy", false);
+	    _prefs.putUChar("w_n", 1);
+	    _prefs.putString("w_s0", _wifiProfSsid[0]);
+	    _prefs.putString("w_p0", _wifiProfPass[0]);
+	    _prefs.putString("w_ssid", "");
+	    _prefs.putString("w_pass", "");
+	    _prefs.end();
+	    Serial.printf("[WiFi] Migrated old credential '%s' to multi-profile\n", _wifiProfSsid[0]);
+	    return;
+	  }
 
-inline const char* wifiCredSsid()   { return _wifiSsid; }
-inline bool        wifiCredHas()    { return _wifiSsid[0] != 0; }
+	  for (int i = 0; i < _wifiProfCount; i++) {
+	    char k[8];
+	    snprintf(k, sizeof(k), "w_s%d", i);
+	    _prefs.getString(k, _wifiProfSsid[i], 33);
+	    snprintf(k, sizeof(k), "w_p%d", i);
+	    _prefs.getString(k, _wifiProfPass[i], 65);
+	  }
+	  _prefs.end();
+	}
+
+	// Persist all profiles to NVS
+	inline void _wifiCredFlush() {
+	  _prefs.begin("buddy", false);
+	  _prefs.putUChar("w_n", _wifiProfCount);
+	  for (int i = 0; i < _wifiProfCount; i++) {
+	    char k[8];
+	    snprintf(k, sizeof(k), "w_s%d", i);
+	    _prefs.putString(k, _wifiProfSsid[i]);
+	    snprintf(k, sizeof(k), "w_p%d", i);
+	    _prefs.putString(k, _wifiProfPass[i]);
+	  }
+	  _prefs.end();
+	}
+
+	// Add SSID at priority 0. If already exists, move to top.
+	// Shifts other profiles down. Caps at WIFI_MAX_PROFILES.
+	inline void wifiCredAddTop(const char* ssid, const char* pass) {
+	  if (!ssid || !ssid[0]) return;
+	  // Check if already in list -> move to position 0
+	  for (int i = 0; i < _wifiProfCount; i++) {
+	    if (strcmp(_wifiProfSsid[i], ssid) == 0) {
+	      char tS[33], tP[65];
+	      strncpy(tS, _wifiProfSsid[i], 32); tS[32]=0;
+	      strncpy(tP, _wifiProfPass[i], 64); tP[64]=0;
+	      for (int j = i; j > 0; j--) {
+	        strncpy(_wifiProfSsid[j], _wifiProfSsid[j-1], 32);
+	        strncpy(_wifiProfPass[j], _wifiProfPass[j-1], 64);
+	      }
+	      strncpy(_wifiProfSsid[0], tS, 32);
+	      strncpy(_wifiProfPass[0], tP, 64);
+	      _wifiCredFlush();
+	      return;
+	    }
+	  }
+	  // New SSID — shift down, insert at 0
+	  int n = _wifiProfCount < WIFI_MAX_PROFILES ? _wifiProfCount : WIFI_MAX_PROFILES - 1;
+	  for (int j = n; j > 0; j--) {
+	    strncpy(_wifiProfSsid[j], _wifiProfSsid[j-1], 32);
+	    strncpy(_wifiProfPass[j], _wifiProfPass[j-1], 64);
+	  }
+	  strncpy(_wifiProfSsid[0], ssid, 32); _wifiProfSsid[0][32]=0;
+	  strncpy(_wifiProfPass[0], pass ? pass : "", 64); _wifiProfPass[0][64]=0;
+	  if (_wifiProfCount < WIFI_MAX_PROFILES) _wifiProfCount++;
+	  _wifiCredFlush();
+	}
+
+	inline void wifiCredClear() {
+	  memset(_wifiProfSsid, 0, sizeof(_wifiProfSsid));
+	  memset(_wifiProfPass, 0, sizeof(_wifiProfPass));
+	  _wifiProfCount = 0;
+	  _prefs.begin("buddy", false);
+	  _prefs.putUChar("w_n", 0);
+	  for (int i = 0; i < WIFI_MAX_PROFILES; i++) {
+	    char k[8];
+	    snprintf(k, sizeof(k), "w_s%d", i); _prefs.putString(k, "");
+	    snprintf(k, sizeof(k), "w_p%d", i); _prefs.putString(k, "");
+	  }
+	  _prefs.end();
+	}
+
+	inline int         wifiCredCount()      { return _wifiProfCount; }
+	inline const char* wifiCredSsid(int idx) { return (idx >= 0 && idx < _wifiProfCount) ? _wifiProfSsid[idx] : ""; }
+	inline const char* wifiCredPass(int idx) { return (idx >= 0 && idx < _wifiProfCount) ? _wifiProfPass[idx] : ""; }
+	inline bool        wifiCredHas()         { return _wifiProfCount > 0 && _wifiProfSsid[0][0] != 0; }
 
 inline Settings& settings() { return _settings; }
 

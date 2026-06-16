@@ -4,11 +4,10 @@
 #include "stats.h"
 
 static WifiMgrState  s_state        = WM_IDLE;
+static int8_t        s_curProfile   = -1;    // profile index being tried (-1=none)
 static uint32_t      s_connectStart = 0;
-static uint8_t       s_retryCount   = 0;
-static const uint8_t MAX_RETRIES    = 3;
 static const uint32_t CONNECT_TIMEOUT_MS = 15000;
-static const uint32_t FAIL_COOLDOWN_MS   = 30000;
+static const uint32_t PROFILE_COOLDOWN_MS = 5000;
 
 static String s_localIP;
 static int    s_rssi = 0;
@@ -25,7 +24,12 @@ static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
       s_rssi     = WiFi.RSSI();
       s_connected = true;
       s_state    = WM_OK;
-      s_retryCount = 0;
+      // Promote connected profile to highest priority (index 0)
+      if (s_curProfile > 0) {
+        String curSsid = WiFi.SSID();
+        wifiCredAddTop(curSsid.c_str(), wifiCredPass(s_curProfile));
+        s_curProfile = 0;
+      }
       Serial.printf("[WiFi] OK  IP: %s  RSSI: %d\n", s_localIP.c_str(), s_rssi);
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
@@ -45,14 +49,14 @@ void wifiMgrInit() {
   wifiCredLoad();
   WiFi.mode(WIFI_STA);
   WiFi.onEvent(onWifiEvent);
-  // Let ESP-IDF manage WiFi sleep (required for BLE coexistence)
   if (wifiCredHas()) {
-    Serial.printf("[WiFi] Auto-connect to '%s'...\n", wifiCredSsid());
+    s_curProfile = 0;
     s_state = WM_AUTO_CONNECT;
     s_connectStart = millis();
-    WiFi.begin(_wifiSsid, _wifiPass);
+    Serial.printf("[WiFi] Auto-connect profile 1/%d: '%s'\n",
+      wifiCredCount(), wifiCredSsid(0));
+    WiFi.begin(wifiCredSsid(0), wifiCredPass(0));
   } else {
-    // No saved credentials — stay idle, wait for BLE/web provisioning
     Serial.println("[WiFi] No saved credentials — waiting for provisioning");
   }
 }
@@ -66,23 +70,25 @@ void wifiMgrTick() {
       if (now - s_connectStart > CONNECT_TIMEOUT_MS) {
         s_state  = WM_FAIL;
         s_connected = false;
-        s_retryCount++;
-        Serial.printf("[WiFi] Connect timeout (%d/%d)\n", s_retryCount, MAX_RETRIES);
+        Serial.printf("[WiFi] Timeout connecting to '%s'\n",
+          s_curProfile >= 0 ? wifiCredSsid(s_curProfile) : "?");
         s_connectStart = now;
         WiFi.disconnect();
       }
       break;
     case WM_FAIL:
-      if (now - s_connectStart > FAIL_COOLDOWN_MS) {
-        if (s_retryCount < MAX_RETRIES && wifiCredHas()) {
-          Serial.printf("[WiFi] Retry %d/%d...\n", s_retryCount + 1, MAX_RETRIES);
+      if (now - s_connectStart > PROFILE_COOLDOWN_MS) {
+        if (s_curProfile >= 0 && s_curProfile + 1 < wifiCredCount()) {
+          s_curProfile++;
           s_state = WM_AUTO_CONNECT;
           s_connectStart = now;
-          WiFi.begin(_wifiSsid, _wifiPass);
+          Serial.printf("[WiFi] Try profile %d/%d: '%s'\n",
+            s_curProfile + 1, wifiCredCount(), wifiCredSsid(s_curProfile));
+          WiFi.begin(wifiCredSsid(s_curProfile), wifiCredPass(s_curProfile));
         } else {
-          Serial.println("[WiFi] All attempts exhausted");
+          Serial.println("[WiFi] All profiles exhausted");
           s_state = WM_IDLE;
-          s_retryCount = 0;
+          s_curProfile = -1;
         }
       }
       break;
@@ -91,10 +97,10 @@ void wifiMgrTick() {
 }
 
 void wifiMgrConnect(const char* ssid, const char* pass) {
-  wifiCredSave(ssid, pass);
+  wifiCredAddTop(ssid, pass);   // store at highest priority, persist to NVS
+  s_curProfile = 0;
   s_state = WM_CONNECTING;
   s_connectStart = millis();
-  s_retryCount = 0;
   Serial.printf("[WiFi] Connecting to '%s'...\n", ssid);
   WiFi.begin(ssid, pass);
 }
@@ -104,7 +110,7 @@ void wifiMgrDisconnect() {
   s_state      = WM_IDLE;
   s_connected   = false;
   s_localIP     = "";
-  s_retryCount  = 0;
+  s_curProfile  = -1;
   Serial.println("[WiFi] Disconnected by user");
 }
 

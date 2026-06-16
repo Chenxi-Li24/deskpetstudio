@@ -21,7 +21,7 @@ repos:
     rev: v19.1.0
     hooks:
       - id: clang-format
-        types_or: [c++, c, cpp, h, hpp]
+        types: [c++]
         args: ['-style=file']
 
   # C++ 静态分析 (只查修改过的文件)

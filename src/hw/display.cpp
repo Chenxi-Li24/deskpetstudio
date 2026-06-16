@@ -1,5 +1,5 @@
 // src/hw/display.cpp — ST7789V 240x280 → 135x240 逻辑画布
-// P169H002-CTP: 4-wire SPI Mode 3, Normally Black, 262K color
+// P169H002-CTP / Waveshare ESP32-S3-Touch-LCD-1.69 V2.1
 
 #include "hw/display.h"
 #include <Arduino_GFX_Library.h>
@@ -11,14 +11,25 @@ static Arduino_Canvas*  s_canvas = nullptr;
 static const uint8_t BRIGHT_LUT[5] = { 10, 64, 128, 192, 255 };
 
 bool hwDisplayInit() {
-  s_bus = new Arduino_HWSPI(PIN_LCD_DC, PIN_LCD_CS);  // CS=GPIO2(虚拟), 硬件CS已接GND
+  s_bus = new Arduino_HWSPI(PIN_LCD_DC, PIN_LCD_CS);
+
+#ifdef BOARD_WAVESHARE
+  // Waveshare 板: IPS=true, 无需 invert
+  s_gfx = new Arduino_ST7789(s_bus, PIN_LCD_RST, 0, true,
+                             LCD_PHYS_W, LCD_PHYS_H, 0, 20);
+#else
+  // P169H002-CTP: normally-black 需反转
   s_gfx = new Arduino_ST7789(s_bus, PIN_LCD_RST, 0, false,
                              LCD_PHYS_W, LCD_PHYS_H, 0, 20);
+#endif
+
   if (!s_gfx->begin()) {
     Serial.println("hwDisplay: ST7789 init failed");
     return false;
   }
-  s_gfx->invertDisplay(true);  // ST7789V normally-black 需反转
+#ifndef BOARD_WAVESHARE
+  s_gfx->invertDisplay(true);
+#endif
   s_gfx->fillScreen(BLACK);
 
   s_canvas = new Arduino_Canvas(HW_W, HW_H, s_gfx);

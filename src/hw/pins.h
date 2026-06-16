@@ -1,31 +1,56 @@
 // src/hw/pins.h — 物理桌宠引脚定义
-// P169H002-CTP 1.69" 240x280 ST7789V + CST816T
-// MPU6050 I2C / 亚博 ASR-TTS / 2x EC11 / 18650
+// 支持两块板子，通过 #define BOARD_WAVESHARE 切换
+//
+//   P169H002-CTP      1.69" 240x280 ST7789V + CST816T (自研 ESP32-S3-Pico)
+//   Waveshare         1.69" 240x280 ST7789V2 + CST816T (ESP32-S3-Touch-LCD-1.69 V2.1)
+//
+// 默认 Waveshare；切回自研板注释掉 #define BOARD_WAVESHARE
 
 #pragma once
 
-// ── SPI 屏幕 (ST7789V 4-wire SPI Mode 3) ──
-// ESP32-S3-Pico: GPIO0-13 可用, GPIO14-16 跳线
-// CS → GND 硬件接地, GPIO2 虚拟CS(不接线, 库需要一个有效引脚号)
-// RST → GPIO10 (原 CS 省出)
-#define PIN_LCD_SCLK  12
-#define PIN_LCD_MOSI  11
-#define PIN_LCD_CS    2
-#define PIN_LCD_DC    13
-#define PIN_LCD_RST   10
-#define PIN_LCD_BL    9
+#define BOARD_WAVESHARE   // <-- 注释此行切回 P169H002-CTP
 
-// ── 板载 WS2812 RGB LED ──
+// ══ SPI 屏幕 (ST7789, 4-wire SPI Mode 3) ══
+#if defined(BOARD_WAVESHARE)
+  // Waveshare ESP32-S3-Touch-LCD-1.69 V2.1
+  #define PIN_LCD_SCLK  13
+  #define PIN_LCD_MOSI  15
+  #define PIN_LCD_CS    8
+  #define PIN_LCD_DC    7
+  #define PIN_LCD_RST   38
+  #define PIN_LCD_BL    14
+#else
+  // P169H002-CTP 自研板
+  #define PIN_LCD_SCLK  12
+  #define PIN_LCD_MOSI  11
+  #define PIN_LCD_CS    2
+  #define PIN_LCD_DC    13
+  #define PIN_LCD_RST   10
+  #define PIN_LCD_BL    9
+#endif
+
+// ── WS2812 ──
 #define PIN_WS2812    21
 #define WS2812_NUM    1
 
-// ── I2C 总线 ──
-#define PIN_I2C_SDA   4
-#define PIN_I2C_SCL   5
+// ══ I2C 总线 ══
+#if defined(BOARD_WAVESHARE)
+  // Waveshare: SDA=5, SCL=4 (与自研板相反!)
+  #define PIN_I2C_SDA   5
+  #define PIN_I2C_SCL   4
+#else
+  #define PIN_I2C_SDA   4
+  #define PIN_I2C_SCL   5
+#endif
 
-// ── 触摸 CST816T I2C 0x15 ──
-#define PIN_TP_RST    2
-#define PIN_TP_INT    3
+// ══ 触摸 CST816T I2C 0x15 ══
+#if defined(BOARD_WAVESHARE)
+  #define PIN_TP_RST    10
+  #define PIN_TP_INT    11
+#else
+  #define PIN_TP_RST    2
+  #define PIN_TP_INT    3
+#endif
 
 // ── 旋转编码器 EC11 ──
 #define PIN_ENC1_CLK  6

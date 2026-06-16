@@ -68,6 +68,9 @@ class WifiCfgCallback : public BLECharacteristicCallbacks {
     if (val.empty()) return;
 
     // Parse {"ssid":"...","pass":"..."}
+    // UTF-8 safe: strchr(s, '"') scans for byte 0x22 which never appears
+    // inside multi-byte UTF-8 sequences (continuation bytes are 0x80-0xBF).
+    // Sender must use json.dumps(..., ensure_ascii=False) â see stats.h.
     const char* s = strstr(val.c_str(), "\"ssid\"");
     const char* p = strstr(val.c_str(), "\"pass\"");
     if (!s || !p) { Serial.println("WiFi: bad JSON"); return; }
