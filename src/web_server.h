@@ -11,3 +11,9 @@ const char* webClawdState();  // current Clawd state from /api/led
 // Circular log buffer for /api/log
 void   webLog(const char* fmt, ...);
 String webLogGet();           // returns JSON array of last N lines
+
+// Permission request system — screen dialog + encoder input
+void permTick();              // check timeout, call each loop
+void permDraw();              // draw dialog on canvas, call each loop (after canvas clear)
+void permInput();             // handle encoder rotation + button, call each loop
+bool permActive();            // true when a dialog is showing (block normal display)

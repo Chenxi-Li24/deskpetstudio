@@ -99,10 +99,11 @@ static void handleStatus(AsyncWebServerRequest* req) {
   doc["display"] = !gifAvailable ? "pet" : (buddyMode ? "pet" : "normal");
   doc["clawd_state"] = s_clawdState;
 
-  HwEnc enc1 = hwEnc1Web();
-  JsonObject encObj = doc["enc1"].to<JsonObject>();
-  encObj["delta"]   = enc1.delta;
-  encObj["pressed"] = enc1.pressed;
+  HwTouch t = hwTouch();
+  JsonObject touchObj = doc["touch"].to<JsonObject>();
+  touchObj["down"] = t.down;
+  touchObj["x"]    = t.x;
+  touchObj["y"]    = t.y;
 
   serializeJson(doc, *resp);
   addCors(resp);
@@ -221,6 +222,165 @@ static void onSpecies(AsyncWebServerRequest* req, JsonVariant& json)    { handle
 static void onWifi(AsyncWebServerRequest* req, JsonVariant& json)       { handleWifi(req, json); }
 static void onBeep(AsyncWebServerRequest* req, JsonVariant& json)       { handleBeep(req, json); }
 
+// ── Permission request system ─────────────────────────────────────────
+struct PermReq {
+  String   id;
+  String   tool;
+  String   hint;
+  uint32_t created;
+  String   result;   // ""=pending, "approved", "denied", "timeout"
+};
+static PermReq s_perm;
+static bool    s_permActive = false;
+static const uint32_t PERM_TIMEOUT_MS = 60000;
+
+// Button hit rects (canvas coords, matching permDraw layout)
+static const int PERM_BTN_X = 20, PERM_BTN_Y0 = 190, PERM_BTN_Y1 = 225;
+static const int PERM_BTN_W = 200, PERM_BTN_H = 28;
+
+// POST /api/permission
+static void onPermission(AsyncWebServerRequest* req, JsonVariant& json) {
+  const char* id   = json["id"];
+  const char* tool = json["tool"];
+  const char* hint = json["hint"];
+  if (!id) {
+    AsyncWebServerResponse* resp = req->beginResponse(400, "application/json",
+      "{\"error\":\"missing id\"}");
+    addCors(resp);
+    req->send(resp);
+    return;
+  }
+  if (s_permActive && s_perm.result.isEmpty()) {
+    AsyncWebServerResponse* resp = req->beginResponse(409, "application/json",
+      "{\"error\":\"busy\",\"current\":\"" + s_perm.id + "\"}");
+    addCors(resp);
+    req->send(resp);
+    return;
+  }
+  s_perm.id      = id;
+  s_perm.tool    = tool ? tool : "";
+  s_perm.hint    = hint ? hint : "";
+  s_perm.created = millis();
+  s_perm.result  = "";
+  s_permActive   = true;
+  webLog("PERM: %s tool=%s", id, s_perm.tool.c_str());
+  Serial.printf("[perm] new id=%s tool=%s hint=%s\n", id, s_perm.tool.c_str(), s_perm.hint.c_str());
+  AsyncWebServerResponse* resp = req->beginResponse(202, "application/json",
+    "{\"ok\":true,\"id\":\"" + s_perm.id + "\"}");
+  addCors(resp);
+  req->send(resp);
+}
+
+// GET /api/permission?id=xxx
+static void handlePermPoll(AsyncWebServerRequest* req) {
+  String id = req->arg("id");
+  if (id.isEmpty()) {
+    AsyncWebServerResponse* resp = req->beginResponse(400, "application/json",
+      "{\"error\":\"missing id\"}");
+    addCors(resp);
+    req->send(resp);
+    return;
+  }
+  if (!s_permActive || s_perm.id != id) {
+    AsyncWebServerResponse* resp = req->beginResponse(404, "application/json",
+      "{\"error\":\"not found\"}");
+    addCors(resp);
+    req->send(resp);
+    return;
+  }
+  String r = s_perm.result.isEmpty() ? "pending" : s_perm.result;
+  String json = "{\"id\":\"" + s_perm.id + "\",\"result\":\"" + r + "\"}";
+  AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", json);
+  addCors(resp);
+  req->send(resp);
+}
+
+// ── Permission display helpers ────────────────────────────────────────
+static void drawBtn(int x, int y, int w, int h, const char* label, uint16_t bg, uint16_t fg) {
+  Arduino_Canvas* c = hwCanvas();
+  if (!c) return;
+  c->fillRect(x, y, w, h, bg);
+  c->drawRect(x, y, w, h, 0x7BEF);
+  int tw = strlen(label) * 6;
+  c->setCursor(x + (w - tw) / 2, y + (h - 8) / 2);
+  c->setTextColor(fg);
+  c->setTextSize(1);
+  c->print(label);
+}
+
+void permDraw() {
+  if (!s_permActive || !s_perm.result.isEmpty()) return;
+  Arduino_Canvas* c = hwCanvas();
+  if (!c) return;
+  // Title bar
+  c->fillRect(0, 0, HW_W, 26, 0x001F);
+  c->setTextColor(WHITE);
+  c->setTextSize(2);
+  c->setCursor(6, 4);
+  c->print("Permission");
+  // Tool (text size 2)
+  c->setTextColor(0xCE79);
+  c->setTextSize(1);
+  c->setCursor(6, 38);
+  c->print("Tool: ");
+  c->setTextColor(WHITE);
+  c->setTextSize(2);
+  c->print(s_perm.tool);
+  // Hint (wrap at 36 chars for 240-wide canvas)
+  c->setTextColor(0xCE79);
+  c->setTextSize(1);
+  c->setCursor(6, 62);
+  c->print("Cmd: ");
+  c->setTextColor(WHITE);
+  String h = s_perm.hint;
+  int wrap = 36;
+  if (h.length() <= wrap) {
+    c->print(h);
+  } else {
+    c->print(h.substring(0, wrap));
+    c->setCursor(6, 74);
+    c->print(h.substring(wrap, min((int)h.length(), wrap * 2)));
+  }
+  // Buttons — tap to confirm
+  drawBtn(PERM_BTN_X, PERM_BTN_Y0, PERM_BTN_W, PERM_BTN_H, "Approve", 0x07E0, BLACK);
+  drawBtn(PERM_BTN_X, PERM_BTN_Y1, PERM_BTN_W, PERM_BTN_H, "Deny",    0xC104, WHITE);
+}
+
+void permInput() {
+  if (!s_permActive || !s_perm.result.isEmpty()) return;
+  const HwTouch& t = hwTouch();
+  if (!t.justPressed) return;
+
+  // Hit-test: Approve button
+  if (t.x >= PERM_BTN_X && t.x <= PERM_BTN_X + PERM_BTN_W &&
+      t.y >= PERM_BTN_Y0 && t.y <= PERM_BTN_Y0 + PERM_BTN_H) {
+    s_perm.result = "approved";
+  }
+  // Hit-test: Deny button
+  else if (t.x >= PERM_BTN_X && t.x <= PERM_BTN_X + PERM_BTN_W &&
+           t.y >= PERM_BTN_Y1 && t.y <= PERM_BTN_Y1 + PERM_BTN_H) {
+    s_perm.result = "denied";
+  } else {
+    return; // tap outside buttons, ignore
+  }
+
+  webLog("PERM: %s -> %s", s_perm.id.c_str(), s_perm.result.c_str());
+  Serial.printf("[perm] result id=%s -> %s\n", s_perm.id.c_str(), s_perm.result.c_str());
+}
+
+void permTick() {
+  if (!s_permActive || !s_perm.result.isEmpty()) return;
+  if (millis() - s_perm.created > PERM_TIMEOUT_MS) {
+    s_perm.result = "timeout";
+    webLog("PERM: %s -> timeout", s_perm.id.c_str());
+    Serial.printf("[perm] timeout id=%s\n", s_perm.id.c_str());
+  }
+}
+
+bool permActive() {
+  return s_permActive && s_perm.result.isEmpty();
+}
+
 // Init
 void webServerInit() {
   if (!LittleFS.begin(true)) {
@@ -251,6 +411,8 @@ void webServerInit() {
   server.on("/api/led",        HTTP_POST, onLed);
   server.on("/api/wifi",       HTTP_POST, onWifi);
   server.on("/api/beep",       HTTP_POST, onBeep);
+  server.on("/api/permission", HTTP_POST, onPermission);
+  server.on("/api/permission", HTTP_GET,  handlePermPoll);
 
   // Log endpoint
   server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* req) {

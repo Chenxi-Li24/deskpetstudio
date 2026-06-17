@@ -1,6 +1,5 @@
-// src/hw/display.cpp — ST7789V 240x280 → 135x240 逻辑画布
-// P169H002-CTP / Waveshare ESP32-S3-Touch-LCD-1.69 V2.1
-
+// src/hw/display.cpp — ST7789V 240x280 -> 135x240 logical canvas
+// Verified against Waveshare ESP32-S3-Touch-LCD-1.69 V2.1 HelloWorld example
 #include "hw/display.h"
 #include <Arduino_GFX_Library.h>
 
@@ -8,67 +7,56 @@ static Arduino_DataBus* s_bus    = nullptr;
 static Arduino_ST7789*  s_gfx    = nullptr;
 static Arduino_Canvas*  s_canvas = nullptr;
 
-static const uint8_t BRIGHT_LUT[5] = { 10, 64, 128, 192, 255 };
-
 bool hwDisplayInit() {
-  s_bus = new Arduino_HWSPI(PIN_LCD_DC, PIN_LCD_CS);
+  // Arduino_HWSPI with explicit SCK/MOSI — critical fix from official example
+  s_bus = new Arduino_HWSPI(PIN_LCD_DC, PIN_LCD_CS, PIN_LCD_SCLK, PIN_LCD_MOSI);
 
-#ifdef BOARD_WAVESHARE
-  // Waveshare 板: IPS=true, 无需 invert
+  // ST7789(bus, RST, rotation, IPS, w, h, col1, row1, col2, row2)
   s_gfx = new Arduino_ST7789(s_bus, PIN_LCD_RST, 0, true,
-                             LCD_PHYS_W, LCD_PHYS_H, 0, 20);
-#else
-  // P169H002-CTP: normally-black 需反转
-  s_gfx = new Arduino_ST7789(s_bus, PIN_LCD_RST, 0, false,
-                             LCD_PHYS_W, LCD_PHYS_H, 0, 20);
-#endif
+                             LCD_PHYS_W, LCD_PHYS_H, 0, 20, 0, 0);
 
   if (!s_gfx->begin()) {
-    Serial.println("hwDisplay: ST7789 init failed");
+    Serial.println("hwDisplay: ST7789 gfx->begin() FAILED");
     return false;
   }
-#ifndef BOARD_WAVESHARE
-  s_gfx->invertDisplay(true);
-#endif
   s_gfx->fillScreen(BLACK);
 
+  // Backlight ON — digital per official example (not PWM)
+  pinMode(PIN_LCD_BL, OUTPUT);
+  digitalWrite(PIN_LCD_BL, HIGH);
+
+  // Canvas: 135x240 logical on 240x280 physical
   s_canvas = new Arduino_Canvas(HW_W, HW_H, s_gfx);
   if (!s_canvas->begin()) {
     Serial.println("hwDisplay: Canvas init failed");
     return false;
   }
 
-  // 背光 PWM
-  ledcSetup(0, 5000, 8);
-  ledcAttachPin(PIN_LCD_BL, 0);
-  ledcWrite(0, 255);  // 背光最大
-
-  Serial.printf("hwDisplay: ST7789V %dx%d OK\n", LCD_PHYS_W, LCD_PHYS_H);
+  Serial.printf("hwDisplay: ST7789V %dx%d OK, Canvas %dx%d\n",
+                LCD_PHYS_W, LCD_PHYS_H, HW_W, HW_H);
   return true;
 }
 
 Arduino_Canvas* hwCanvas() { return s_canvas; }
 
 void hwDisplayPush() {
-  const int OFF_X = (LCD_PHYS_W - HW_W) / 2;   // (240-135)/2 = 52
-  const int OFF_Y = (LCD_PHYS_H - HW_H) / 2;   // (280-240)/2 = 20
-
+  // Canvas (240x250) on 260-row visible area, shifted down slightly
+  static const int OFF_Y = 6;
   uint16_t* src = (uint16_t*)s_canvas->getFramebuffer();
-  s_gfx->fillScreen(BLACK);
-  s_gfx->draw16bitRGBBitmap(OFF_X, OFF_Y, src, HW_W, HW_H);
+  s_gfx->draw16bitRGBBitmap(0, OFF_Y, src, HW_W, HW_H);
 }
 
 void hwDisplayBrightness(uint8_t lvl) {
-  if (lvl > 4) lvl = 4;
-  ledcWrite(0, BRIGHT_LUT[lvl]);
+  if (lvl == 0) digitalWrite(PIN_LCD_BL, LOW);
+  else          digitalWrite(PIN_LCD_BL, HIGH);
 }
 
 void hwDisplaySleep(bool off) {
   if (off) {
-    ledcWrite(0, 0);
+    digitalWrite(PIN_LCD_BL, LOW);
     s_gfx->displayOff();
   } else {
     s_gfx->displayOn();
-    hwDisplayBrightness(2);
+    digitalWrite(PIN_LCD_BL, HIGH);
   }
 }

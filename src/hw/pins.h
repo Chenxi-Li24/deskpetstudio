@@ -12,13 +12,13 @@
 
 // ══ SPI 屏幕 (ST7789, 4-wire SPI Mode 3) ══
 #if defined(BOARD_WAVESHARE)
-  // Waveshare ESP32-S3-Touch-LCD-1.69 V2.1
-  #define PIN_LCD_SCLK  13
-  #define PIN_LCD_MOSI  15
-  #define PIN_LCD_CS    8
-  #define PIN_LCD_DC    7
-  #define PIN_LCD_RST   38
-  #define PIN_LCD_BL    14
+  // Waveshare ESP32-S3-Touch-LCD-1.69 V2.1 (verified against official pin_config.h)
+  #define PIN_LCD_SCLK  6
+  #define PIN_LCD_MOSI  7
+  #define PIN_LCD_CS    5
+  #define PIN_LCD_DC    4
+  #define PIN_LCD_RST   8
+  #define PIN_LCD_BL    15
 #else
   // P169H002-CTP 自研板
   #define PIN_LCD_SCLK  12
@@ -35,9 +35,8 @@
 
 // ══ I2C 总线 ══
 #if defined(BOARD_WAVESHARE)
-  // Waveshare: SDA=5, SCL=4 (与自研板相反!)
-  #define PIN_I2C_SDA   5
-  #define PIN_I2C_SCL   4
+  #define PIN_I2C_SDA   11
+  #define PIN_I2C_SCL   10
 #else
   #define PIN_I2C_SDA   4
   #define PIN_I2C_SCL   5
@@ -45,20 +44,12 @@
 
 // ══ 触摸 CST816T I2C 0x15 ══
 #if defined(BOARD_WAVESHARE)
-  #define PIN_TP_RST    10
-  #define PIN_TP_INT    11
+  #define PIN_TP_RST    13
+  #define PIN_TP_INT    14
 #else
   #define PIN_TP_RST    2
   #define PIN_TP_INT    3
 #endif
-
-// ── 旋转编码器 EC11 ──
-#define PIN_ENC1_CLK  6
-#define PIN_ENC1_DT   7
-#define PIN_ENC1_SW   8
-#define PIN_ENC2_CLK  15
-#define PIN_ENC2_DT   16
-#define PIN_ENC2_SW   17
 
 // ── WS2812 LED ──
 #define PIN_LED       18
@@ -77,7 +68,9 @@
 #define PIN_VOICE_TX  19
 
 // ── 屏幕参数 ──
+// 1.69" ST7789V: 240x280 physical, row offset 20 (under bezel)
+// Visible area: 240x260, Canvas fills it completely
 #define LCD_PHYS_W    240
 #define LCD_PHYS_H    280
-#define HW_W          135
-#define HW_H          240
+#define HW_W          240
+#define HW_H          250

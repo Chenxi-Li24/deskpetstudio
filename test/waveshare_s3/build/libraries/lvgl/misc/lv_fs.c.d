@@ -1,0 +1,34 @@
+C:\Users\ROG\deskpet-firmware\test\waveshare_s3\build\libraries\lvgl\misc\lv_fs.c.o: \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_fs.c \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_fs.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_kconfig.h \
+ C:\Users\ROG\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.11/tools/sdk/esp32s3/dio_qspi/include/sdkconfig.h \
+ C:\Users\ROG\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.11/tools/sdk/esp32s3/include/esp_common/include/esp_attr.h \
+ c:\users\rog\documents\arduino\libraries\lv_conf.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_assert.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_log.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_types.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_mem.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_ll.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_gc.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_mem.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_timer.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\hal\lv_hal_tick.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\misc\lv_types.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\draw\lv_img_cache.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\draw\lv_img_decoder.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\draw\lv_img_buf.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_color.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_assert.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_math.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_area.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_fs.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_types.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\draw\lv_draw_mask.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_math.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\core\lv_obj_pos.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_area.h

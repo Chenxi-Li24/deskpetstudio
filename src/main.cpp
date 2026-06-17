@@ -1,4 +1,4 @@
-// DeskPet ESP32-S3 — Minimal Test: WiFi + BLE Provisioning + LED + Web Server
+// DeskPet ESP32-S3 — WiFi + BLE + Web Server + Status Screen
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
 #include <BLEDevice.h>
@@ -6,10 +6,14 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 #include <WiFi.h>
+#include <LittleFS.h>
 #include "hw/pins.h"
 #include "hw/input.h"
+#include "hw/display.h"
+#include "hw/power.h"
 #include "wifi_manager.h"
 #include "web_server.h"
+#include "stats.h"
 
 // ── Stubs for excluded modules ─────────────────────────────────────────
 // ble_bridge (NUS BLE) — not used in this test, use custom BLE instead
@@ -94,7 +98,146 @@ class WifiCfgCallback : public BLECharacteristicCallbacks {
   }
 };
 
-// ── Setup ──────────────────────────────────────────────────────────────
+// ── Status Screen ─────────────────────────────────────────────────────
+// 240x260 canvas, fills the 1.69" ST7789V visible area
+// Layout: title + WiFi (large) | Clawd (large) | Stats (medium) | System (small)
+static void drawStatus() {
+  Arduino_Canvas* c = hwCanvas();
+  if (!c) return;
+
+  // ── Title bar (text size 2, 12x16) ──
+  c->fillRect(0, 0, HW_W, 26, 0x001F);
+  c->setTextColor(WHITE);
+  c->setTextSize(2);
+  c->setCursor(6, 4);
+  c->print("DeskPet S3");
+
+  // Clawd badge (right side of title bar)
+  const char* cs = webClawdState();
+  uint16_t badgeBg = 0x3186;
+  if      (strcmp(cs, "thinking") == 0) badgeBg = 0xFC00;
+  else if (strcmp(cs, "working")  == 0) badgeBg = 0x07E0;
+  else if (strcmp(cs, "juggling") == 0) badgeBg = 0x07FF;
+  int csW = strlen(cs) * 12; // text size 2 = 12px wide
+  c->fillRect(HW_W - csW - 12, 3, csW + 8, 20, badgeBg);
+  c->setTextColor(badgeBg == 0x3186 ? WHITE : BLACK);
+  c->setCursor(HW_W - csW - 8, 5);
+  c->print(cs);
+
+  int y = 30;
+
+  // ── WiFi SSID (text size 2, green) ──
+  WifiMgrState st = wifiMgrState();
+  if (st == WM_OK) {
+    c->setTextSize(2);
+    c->setTextColor(0x07E0); c->setCursor(6, y);
+    c->print(WiFi.SSID());
+    y += 20;
+
+    // IP (text size 2) + RSSI (text size 1, right-aligned)
+    c->setTextColor(WHITE); c->setCursor(6, y);
+    c->print(wifiMgrLocalIP());
+    c->setTextSize(1);
+    c->setTextColor(0xCE79);
+    int rssiW = snprintf(nullptr, 0, "RSSI %d dBm", wifiMgrRssi());
+    c->setCursor(HW_W - rssiW * 6 - 6, y + 3);
+    c->printf("RSSI %d dBm", wifiMgrRssi());
+    y += 22;
+  } else {
+    c->setTextSize(2);
+    c->setTextColor(0xFC00); c->setCursor(6, y);
+    c->print(st == WM_IDLE ? "No WiFi" :
+             st == WM_CONNECTING ? "Connecting..." :
+             st == WM_FAIL ? "WiFi FAILED" : "?");
+    y += 24;
+  }
+
+  // ── Divider ──
+  c->drawFastHLine(6, y, HW_W - 12, 0x4208); y += 8;
+
+  // ── Clawd state (text size 2, big & centered) ──
+  c->setTextSize(2);
+  uint16_t csColor = 0xCE79;
+  if      (strcmp(cs, "thinking") == 0) csColor = 0xFC00;
+  else if (strcmp(cs, "working")  == 0) csColor = 0x07E0;
+  else if (strcmp(cs, "juggling") == 0) csColor = 0x07FF;
+  c->setTextColor(csColor);
+  int csX = (HW_W - strlen(cs) * 12) / 2;
+  c->setCursor(csX, y);
+  c->print(cs);
+  y += 22;
+
+  // ── Divider ──
+  c->drawFastHLine(6, y, HW_W - 12, 0x4208); y += 8;
+
+  // ── Stats (text size 2 for key numbers, size 1 for labels) ──
+  const auto& sr = stats();
+  c->setTextSize(2);
+  c->setTextColor(WHITE); c->setCursor(6, y);
+  c->printf("Level %u", sr.level);
+  c->setCursor(HW_W / 2, y);
+  c->printf("Tokens %lu", (unsigned long)sr.tokens);
+  y += 22;
+
+  c->setTextSize(2);
+  c->setTextColor(0xCE79); c->setCursor(6, y);
+  c->printf("Approvals %u", sr.approvals);
+  c->setCursor(HW_W / 2, y);
+  c->printf("Denials %u", sr.denials);
+  y += 20;
+
+  uint16_t vel = statsMedianVelocity();
+  c->setTextSize(1);
+  c->setTextColor(0xCE79); c->setCursor(6, y);
+  if (vel) c->printf("Velocity %us", vel);
+  else     c->print("Velocity --");
+  y += 14;
+
+  // ── Divider ──
+  c->drawFastHLine(6, y, HW_W - 12, 0x4208); y += 8;
+
+  // ── System info (text size 1, two-column) ──
+  c->setTextSize(1);
+  uint32_t uptime = millis() / 1000;
+  c->setTextColor(0xCE79); c->setCursor(6, y);
+  c->printf("Heap %uK free", ESP.getFreeHeap() / 1024);
+  c->setCursor(HW_W / 2, y);
+  c->printf("%uh %um", uptime / 3600, (uptime % 3600) / 60);
+  y += 14;
+
+  // Battery
+  HwBattery bat = hwBattery();
+  if (bat.mV > 0) {
+    c->setTextColor(0xCE79); c->setCursor(6, y);
+    c->printf("Bat %d%%  %dmV", bat.pct, bat.mV);
+    if (bat.usbPresent) { c->setTextColor(0x07E0); c->print(" USB"); }
+    // Battery bar
+    y += 10;
+    int barW = HW_W - 12;
+    int barPixels = (barW * bat.pct) / 100;
+    uint16_t barColor = bat.pct > 50 ? 0x07E0 : (bat.pct > 20 ? 0xFC00 : 0xC104);
+    c->drawRect(6, y, barW, 6, 0x7BEF);
+    if (barPixels > 0) c->fillRect(6, y, barPixels, 6, barColor);
+    y += 10;
+  } else {
+    c->setTextColor(0xCE79); c->setCursor(6, y);
+    c->print("Bat --");
+    y += 14;
+  }
+
+  // Flash
+  c->setTextColor(0x3186); c->setCursor(6, y);
+  c->printf("Flash %.1f / %.1f MB",
+    LittleFS.usedBytes() / 1048576.0f, LittleFS.totalBytes() / 1048576.0f);
+
+  // ── Footer ──
+  c->setTextSize(1);
+  c->setTextColor(0x3186);
+  c->setCursor(6, HW_H - 10);
+  c->print(petName());
+  c->setCursor(HW_W / 2, HW_H - 10);
+  c->print("deskpet.local");
+}
 void setup() {
   // 1. Serial
   Serial.begin(115200);
@@ -132,10 +275,27 @@ void setup() {
   // 5. Web server (async — serves REST API when WiFi connects)
   webServerInit();
 
-  // 6. Input — EC11 encoder
+  // 6. Display — ST7789V + Canvas
+  if (hwDisplayInit()) {
+    Arduino_Canvas* c = hwCanvas();
+    c->fillScreen(BLACK);
+    c->setTextColor(WHITE);
+    c->setTextSize(2);
+    c->setCursor(10, 100);
+    c->print("DeskPet");
+    c->setTextSize(1);
+    c->setCursor(10, 130);
+    c->print("WiFi+BLE+Web");
+    hwDisplayPush();
+    Serial.println("Display: OK");
+  } else {
+    Serial.println("Display: FAILED");
+  }
+
+  // 7. Input — EC11 encoder
   hwInputInit();
 
-  // 7. Ready
+  // 8. Ready
   Serial.println("=== Ready ===");
   ledSet(0, 0, 255, 32);  // Blue = waiting for WiFi
 }
@@ -151,14 +311,26 @@ void loop() {
   // 2. Input — poll encoder
   hwInputUpdate();
 
-  // 3. LED update + Encoder print (500ms interval)
+  // 3. Permission system — tick timeout + handle encoder/button
+  permTick();
+  permInput();
+
+  // 4. LED update + Display (500ms interval)
   if (now - lastLed > 500) {
     lastLed = now;
 
-    // --- Encoder debug ---
-    HwEnc enc = hwEnc1();
-    if (enc.delta != 0 || enc.justPressed || enc.pressed) {
-      Serial.printf("ENC1: delta=%+d btn=%d\n", enc.delta, enc.pressed);
+    // --- Display update ---
+    Arduino_Canvas* c = hwCanvas();
+    if (c) {
+      c->fillScreen(BLACK);
+
+      if (permActive()) {
+        // Permission dialog takes over the screen
+        permDraw();
+      } else {
+        drawStatus();
+      }
+      hwDisplayPush();
     }
 
     // --- LED ---

@@ -1,0 +1,34 @@
+C:\Users\ROG\deskpet-firmware\test\waveshare_s3\build\libraries\lvgl\draw\lv_img_buf.c.o: \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\draw\lv_img_buf.c \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\draw\lv_img_buf.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_color.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_kconfig.h \
+ C:\Users\ROG\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.11/tools/sdk/esp32s3/include/esp_common/include/esp_attr.h \
+ c:\users\rog\documents\arduino\libraries\lv_conf.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_assert.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_log.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_types.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_mem.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_math.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_area.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\draw\lv_draw_img.h \
+ C:\Users\ROG\Documents\Arduino\libraries\lvgl\src\draw\lv_img_decoder.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_fs.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_types.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_style.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\font\lv_font.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\lv_conf_internal.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\font\lv_symbol_def.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_area.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_color.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_area.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_anim.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_txt.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_printf.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_bidi.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_style_gen.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_math.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_log.h \
+ c:\users\rog\documents\arduino\libraries\lvgl\src\misc\lv_mem.h
